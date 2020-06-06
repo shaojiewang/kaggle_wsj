@@ -112,11 +112,11 @@ plt.ylabel(u"人数")
 
 g = data_train.groupby(['SibSp', 'Survived'])
 df = pd.DataFrame(g.count()['PassengerId'])
-print(df)
+#print(df)
 
 g = data_train.groupby(['Parch', 'Survived'])
 df = pd.DataFrame(g.count()['PassengerId'])
-print(df)
+#print(df)
 
 fig = plt.figure()
 fig.set(alpha=0.2)  # 设定图表颜色alpha参数
@@ -132,8 +132,8 @@ plt.ylabel(u"人数")
 
 def set_missing_ages(df):
     age_df = df[['Age','Fare', 'Parch', 'SibSp', 'Pclass']]
-    known_age = age_df[age_df.Age.notnull()].as_matrix()
-    unknown_age = age_df[age_df.Age.isnull()].as_matrix()
+    known_age = age_df[age_df.Age.notnull()].values
+    unknown_age = age_df[age_df.Age.isnull()].values
     y = known_age[:, 0]
     X = known_age[:, 1:]
     rfr = RandomForestRegressor(random_state=0, n_estimators=2000,\
@@ -151,17 +151,17 @@ def set_cabin_type(df):
 
 data_train, rfr = set_missing_ages(data_train)
 data_train = set_cabin_type(data_train)
-print(data_train)
+#print(data_train)
 
 #把yes no等文字属性转换为one hot属性
 dummies_cabin = pd.get_dummies(data_train['Cabin'], prefix='Cabin')
 dummies_sex = pd.get_dummies(data_train['Sex'], prefix='Sex')
-dummies_pclass = pd.get_dummies(data_train['Pclass'], prefix='Pclsass')
+dummies_pclass = pd.get_dummies(data_train['Pclass'], prefix='Pclass')
 dummies_embarked = pd.get_dummies(data_train['Embarked'], prefix='Embarked')
 
 df = pd.concat([data_train, dummies_cabin, dummies_embarked, dummies_pclass, dummies_sex], axis=1)
 df.drop(['Name', 'Cabin', 'Sex', 'Pclass', 'Ticket', 'Embarked'], axis=1, inplace=True)
-print(df)
+#print(df)
 
 scaler = preprocessing.StandardScaler()
 age_scaled_param = scaler.fit(df['Age'].values.reshape(-1, 1))
@@ -169,16 +169,16 @@ df['Age_scaled'] = scaler.fit_transform(df['Age'].values.reshape(-1, 1), age_sca
 
 age_scaled_param = scaler.fit(df['Fare'].values.reshape(-1, 1))
 df['Fare_scaled'] = scaler.fit_transform(df['Fare'].values.reshape(-1, 1), age_scaled_param)
-print(df)
+#print(df)
 
 #取出有用数据
 train_df = df.filter(regex='Survived|Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Pclass_.*|Sex_.*')
-train_np = train_df.as_matrix()
+train_np = train_df.values
 
 y = train_np[:,0]
 x = train_np[:,1:]
 
-clf = linear_model.LogisticRegression(C=1.0, penalty='l1', tol=1e-6)
+clf = linear_model.LogisticRegression(C=1.0, penalty='l2', tol=1e-6)
 clf.fit(x, y)
 
 #处理测试数据
@@ -188,14 +188,14 @@ data_test.info()
 data_test.loc[(data_test.Fare.isnull()), 'Fare'] = 0
 
 tmp_df = data_test[['Age', 'Parch', 'Fare', 'SibSp', 'Pclass']]
-null_age = tmp_df[data_test.Age.isnull()].as_matrix()
+null_age = tmp_df[data_test.Age.isnull()].values
 x = null_age[:, 1:]
 predicted_age = rfr.predict(x)
 data_test.loc[(data_test.Age.isnull()), 'Age'] = predicted_age
 data_test = set_cabin_type(data_test)
 dummies_cabin = pd.get_dummies(data_test['Cabin'], prefix='Cabin')
 dummies_sex = pd.get_dummies(data_test['Sex'], prefix='Sex')
-dummies_pclass = pd.get_dummies(data_test['Pclass'], prefix='Pclsass')
+dummies_pclass = pd.get_dummies(data_test['Pclass'], prefix='Pclass')
 dummies_embarked = pd.get_dummies(data_test['Embarked'], prefix='Embarked')
 df_test = pd.concat([data_test, dummies_cabin, dummies_embarked, dummies_pclass, dummies_sex], axis=1)
 df_test.drop(['Name', 'Cabin', 'Sex', 'Pclass', 'Ticket', 'Embarked'], axis=1, inplace=True)
@@ -205,14 +205,26 @@ df_test['Age_scaled'] = scaler.fit_transform(df_test['Age'].values.reshape(-1, 1
 
 fare_scaled_param = scaler.fit(df_test['Fare'].values.reshape(-1, 1))
 df_test['Fare_scaled'] = scaler.fit_transform(df_test['Fare'].values.reshape(-1, 1), fare_scaled_param)
-print(df_test)
+#print(df_test)
 
 test_df = df_test.filter(regex='Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Pclass_.*|Sex_.*')
-test_np = test_df.as_matrix()
+test_np = test_df.values
 predictions = clf.predict(test_np)
-result = pd.DataFrame({'PassengerId': data_test['PassengerId'].as_matrix(), 'Survived': predictions.astype(np.int32)})
+result = pd.DataFrame({'PassengerId': data_test['PassengerId'].values, 'Survived': predictions.astype(np.int32)})
 
 result.to_csv('./input/logistic_regression_predictions.csv', index=False)
 
 data_result = pd.read_csv('./input/logistic_regression_predictions.csv')
-print(data_result)
+#print(data_result)
+
+model_coef = pd.DataFrame({'columns':list(train_df.columns)[1:], 'coef':list(clf.coef_.T)})
+print(model_coef)
+
+# to run a cross validation
+from sklearn.model_selection import cross_val_score, train_test_split
+
+clf = linear_model.LogisticRegression(solver='liblinear', C=1.0, penalty='l2', tol=1e-6)
+all_data = df.filter(regex='Survived|Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Sex_.*|Pclass_.*')
+X = all_data.values[:,1:]
+y = all_data.values[:,0]
+print(cross_val_score(clf, X, y, cv=5))
