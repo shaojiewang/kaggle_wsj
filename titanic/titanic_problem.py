@@ -228,3 +228,77 @@ all_data = df.filter(regex='Survived|Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarke
 X = all_data.values[:,1:]
 y = all_data.values[:,0]
 print(cross_val_score(clf, X, y, cv=5))
+
+# see some of the bad cases
+split_train, split_cv = train_test_split(df, test_size=0.3, random_state=42)
+train_df = split_train.filter(regex='Survived|Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Sex_.*|Pclass_.*')
+clf = linear_model.LogisticRegression(solver='liblinear', C=1.0, penalty='l2', tol=1e-6)
+clf.fit(train_df.values[:, 1:], train_df.values[:, 0])
+cv_df = split_cv.filter(regex='Survived|Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Sex_.*|Pclass_.*')
+predictions = clf.predict(cv_df.values[:, 1:])
+
+original_data_train = pd.read_csv('./input/train.csv')
+bad_cases = original_data_train.loc[original_data_train['PassengerId'].isin(split_cv[predictions != cv_df.values[:, 0]]['PassengerId'].values)]
+print(bad_cases.head(10))
+
+# check learning curve
+from sklearn.model_selection import learning_curve
+def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None, n_jobs=1, 
+                        train_sizes=np.linspace(.05, 1., 20), verbose=0, plot=False):
+    """
+    plot learning curve of an estimator
+
+    """
+    train_sizes, train_scores, test_scores = learning_curve(estimator, X, y, cv=cv, n_jobs=n_jobs, train_sizes=train_sizes, verbose=verbose)
+    train_scores_mean = np.mean(train_scores, axis=1)
+    train_scores_std = np.std(train_scores, axis=1)
+    test_scores_mean = np.mean(test_scores, axis=1)
+    test_scores_std = np.std(test_scores, axis=1)
+
+    if plot:
+        plt.figure()
+        plt.rcParams['font.sans-serif'] = ['Microsoft YaHei'] # to display chinese
+        plt.title(title)
+        if ylim is not None:
+            plt.ylim(*ylim)
+        plt.xlabel(u'训练样本数')
+        plt.ylabel(u'得分')
+        plt.gca().invert_yaxis()
+        plt.grid()
+        plt.fill_between(train_sizes, train_scores_mean - train_scores_std, train_scores_mean + train_scores_std, alpha=0.1, color='b')
+        plt.fill_between(train_sizes, test_scores_mean - test_scores_std, test_scores_mean + test_scores_std, alpha=0.1, color='b')
+
+        plt.plot(train_sizes, train_scores_mean, 'o-', color='b', label=u'训练集得分')
+        plt.plot(train_sizes, test_scores_mean, 'o-', color='r', label=u'交叉验证集上得分')
+        plt.legend(loc='best')
+
+        plt.draw()
+        plt.gca().invert_yaxis()
+        plt.show()
+    midpoint = ((train_scores_mean[-1] + train_scores_std[-1]) + (test_scores_mean[-1] - test_scores_std[-1])) / 2
+    diff = (train_scores_mean[-1] + train_scores_std[-1]) - (test_scores_mean[-1] - test_scores_std[-1])
+    return midpoint, diff
+
+plot_learning_curve(clf, u"学习曲线", X, y)
+
+# ensemble model method
+from sklearn.ensemble import BaggingRegressor
+
+train_df = df.filter(regex='Survived|Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Sex_.*|Pclass.*|Mother|Child|Family|Title')
+train_np = train_df.values
+
+# y即Survival结果
+y = train_np[:, 0]
+
+# X即特征属性值
+X = train_np[:, 1:]
+
+# fit到BaggingRegressor之中
+clf = linear_model.LogisticRegression(C=1.0, penalty='l2', tol=1e-6)
+bagging_clf = BaggingRegressor(clf, n_estimators=20, max_samples=0.8, max_features=1.0, bootstrap=True, bootstrap_features=False, n_jobs=-1)
+bagging_clf.fit(X, y)
+
+test = df_test.filter(regex='Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Sex_.*|Pclass.*|Mother|Child|Family|Title')
+predictions = bagging_clf.predict(test)
+result = pd.DataFrame({'PassengerId':data_test['PassengerId'].values, 'Survived':predictions.astype(np.int32)})
+result.to_csv("./input/logistic_regression_bagging_predictions.csv", index=False)
